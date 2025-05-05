@@ -1,0 +1,18 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pdb
+
+# Virtual Environment
+venv/
+.env
+.venv/
+
+# IDEs and Editors
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
