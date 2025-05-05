@@ -1,0 +1,96 @@
+Perfect! Since Git and your project setup are now clean, let’s dive into **RAG (Retrieval-Augmented Generation)**.
+
+Here’s a quick roadmap to get started—let me know how far you've already come:
+
+---
+
+### 🔧 Basic RAG Pipeline Setup
+
+1. **Document Store**
+   Choose a vector DB to store and retrieve relevant chunks:
+
+   * 🟢 **Local**: `FAISS` (easy for dev/testing)
+   * ⚡ **Cloud**: `Pinecone`, `Weaviate`, `Qdrant`, `Chroma`
+
+2. **Text Chunking + Embedding**
+
+   * Use a chunker (like `langchain.text_splitter`)
+   * Use a text embedding model (e.g., `OpenAI`, `Hugging Face`, `BGE`, `MiniLM`, etc.)
+
+3. **Retriever**
+
+   * Search top-k chunks based on input query
+
+4. **LLM Generator**
+
+   * Feed retrieved docs + user query into an LLM (`OpenAI`, `Gemini`, `Mistral`, etc.)
+
+5. **Output**
+
+   * Display final answer, with source chunks optionally shown
+
+---
+
+### 🧠 Simple RAG Architecture
+
+```plaintext
+User Query
+   ↓
+[Embed] → [Vector Search] → Top Relevant Chunks
+                                ↓
+                    [LLM (Prompt + Chunks)]
+                                ↓
+                          Final Answer
+```
+
+---
+              ┌──────────────┐
+User (client) │ Voice Input  │
+              └──────┬───────┘
+                     │
+             ┌───────▼────────┐
+             │ WebSocket API  │
+             └───────┬────────┘
+                     ▼
+         ┌─────────────────────────┐
+         │ 1. Query Embedding       │ ← use `HuggingFace` or `OpenAI`
+         ├─────────────────────────┤
+         │ 2. Vector Search (RAG)   │ ← use FAISS, Chroma, or Pinecone
+         ├─────────────────────────┤
+         │ 3. Prompt + Context      │
+         │    → Send to LLM (e.g. Gemini) 
+         └─────────────────────────┘
+                     ▼
+              ┌──────────────┐
+              │ Final Answer │
+              └──────┬───────┘
+                     ▼
+              Sent via WebSocket
+
+
+CREATE TABLE documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  content TEXT,
+  embedding VECTOR(768)  -- Gemini's embedding size
+);
+CREATE FUNCTION match_documents (
+  query_embedding vector,
+  match_threshold float,
+  match_count int
+)
+RETURNS TABLE (
+  id uuid,
+  content text,
+  similarity float
+)
+LANGUAGE sql
+AS $$
+  SELECT
+    id,
+    content,
+    1 - (embedding <#> query_embedding) AS similarity
+  FROM documents
+  WHERE embedding <#> query_embedding < match_threshold
+  ORDER BY embedding <#> query_embedding
+  LIMIT match_count;
+$$;

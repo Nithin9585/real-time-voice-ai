@@ -1,6 +1,7 @@
-// websocket.js
 import { WebSocketServer } from 'ws';
-import { streamGeminiResponse } from './services/gemini.js';
+import { streamGeminiResponse, getGeminiSummary, getGeminiEmbedding } from './services/gemini.js';
+import { addDocument } from './services/vectorStore.js'; 
+import { v4 as uuidv4 } from 'uuid';
 
 const sessions = new Map(); // In-memory session store
 
@@ -9,7 +10,7 @@ export function setupWebSocket(server) {
 
   wss.on('connection', (ws) => {
     console.log('🟢 New WebSocket connection');
-    sessions.set(ws, []); // Start empty chat history for this client
+    sessions.set(ws, []);
 
     ws.on('message', async (data) => {
       try {
@@ -18,28 +19,21 @@ export function setupWebSocket(server) {
 
         if (type === 'end') {
           console.log('🔴 Session ended by client');
-          sessions.delete(ws); // Clean up memory
           return;
         }
 
-        console.log('🗣️ Received:', message);
-
         const history = sessions.get(ws) || [];
-
-        // Push the new user message
         history.push({ role: 'user', content: message });
 
         let fullResponse = '';
 
-        // Stream Gemini response token by token
         await streamGeminiResponse(history, (token) => {
           ws.send(JSON.stringify({ partial: token }));
           if (token !== '[__END__]') fullResponse += token;
         });
 
-        // Store model response in history
         history.push({ role: 'model', content: fullResponse });
-        sessions.set(ws, history); // Save updated history
+        sessions.set(ws, history);
 
       } catch (error) {
         console.error('❌ WebSocket error:', error);
@@ -47,9 +41,20 @@ export function setupWebSocket(server) {
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', async () => {
       console.log('❌ WebSocket client disconnected');
-      sessions.delete(ws); // Cleanup on disconnect
+
+      const history = sessions.get(ws);
+      if (history && history.length) {
+        const summary = await getGeminiSummary(history);
+        const embedding = await getGeminiEmbedding(summary);
+
+        await addDocument(summary, embedding); // ✅ Store in Supabase
+
+        console.log('✅ Conversation summarized and stored in Supabase');
+      }
+
+      sessions.delete(ws);
     });
   });
 }
