@@ -1,42 +1,57 @@
-// /pages/api/speak.js
+// app/api/tts/route.js
 
-import OpenAI from 'openai';
-
-const openai = new OpenAI({ apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY });
-
-export async function POST(req) {
-  // Parse the incoming request body
-  const { text } = await req.json();
-
-  if (!text) {
-    return new Response(JSON.stringify({ error: 'Text input is required' }), {
-      status: 400,
-    });
-  }
-
+export const POST = async (request) => {
   try {
-    // Call OpenAI's TTS API or another service to generate speech
-    const mp3 = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: 'nova', // You can use other voices like 'shimmer', 'echo', 'onyx', etc.
-      input: text,
+    const body = await request.json();
+    const { text, voice_id } = body;
+
+    if (!text || !voice_id) {
+      return new Response(JSON.stringify({ error: "Missing text or voice_id" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const elevenResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
+      method: "POST",
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+      },
+      body: JSON.stringify({
+        text,
+        model_id: "eleven_monolingual_v1",
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+        },
+      }),
     });
 
-    const buffer = Buffer.from(await mp3.arrayBuffer());
+    if (!elevenResponse.ok) {
+      const errorText = await elevenResponse.text();
+      console.error("ElevenLabs error:", errorText);
+      return new Response(JSON.stringify({ error: "TTS failed" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-    // Set response headers and return the audio file
-    return new Response(buffer, {
+    const audioBuffer = await elevenResponse.arrayBuffer();
+
+    return new Response(audioBuffer, {
       status: 200,
       headers: {
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': buffer.length,
+        "Content-Type": "audio/mpeg",
+        "Content-Disposition": "inline; filename=voice.mp3",
       },
     });
   } catch (error) {
-    console.error('Error generating speech:', error);
-    return new Response(
-      JSON.stringify({ error: 'Failed to generate speech' }),
-      { status: 500 }
-    );
+    console.error("TTS route error:", error);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-}
+};

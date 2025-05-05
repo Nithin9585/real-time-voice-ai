@@ -13,9 +13,10 @@
     "@emotion/styled": "^11.14.0",
     "@google/generative-ai": "^0.24.0",
     "axios": "^1.8.4",
+    "elevenlabs": "^1.57.0",
     "lucide-react": "^0.487.0",
     "next": "15.3.0",
-    "openai": "^4.93.0",
+    "openai": "^4.96.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

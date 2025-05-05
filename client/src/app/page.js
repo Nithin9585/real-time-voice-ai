@@ -26,7 +26,7 @@ export default function Home() {
       console.log('✅ WebSocket connection established');
     };
 
-    socket.onmessage = (event) => {
+    socket.onmessage = async (event) => {
       console.log('WebSocket message received:', event.data);
       const data = JSON.parse(event.data);
 
@@ -35,14 +35,28 @@ export default function Home() {
           console.log('✅ Gemini finished responding.');
         } else {
           setResponseText((prev) => prev + data.partial);
+
+          // Directly send each chunk to the browser's TTS
+          try {
+            console.log('Requesting TTS with chunk:', data.partial);
+            speakText(data.partial);
+          } catch (err) {
+            console.error('Error in TTS:', err);
+          }
         }
       }
 
       if (data.reply) {
         setResponseText(data.reply);
-        // Send response text to backend for text-to-speech conversion
+        // Send the complete reply to TTS
+        try {
+          console.log('Requesting TTS with full reply:', data.reply);
+          speakText(data.reply);
+        } catch (err) {
+          console.error('Error in TTS:', err);
+        }
+
         console.log('Response from Gemini:', data.reply);
-       playResponseAsSpeech(data.reply);
       }
 
       if (data.error) {
@@ -66,6 +80,103 @@ export default function Home() {
     };
   }, []);
 
+  // const speakText = async (text) => {
+  //   try {
+  //     const res = await fetch("/api/Speak", {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify({
+  //         text,
+  //         voice_id: "EXAVITQu4vr4xnSDxMaL" 
+  //       }),
+  //     });
+  
+  //     if (!res.ok) {
+  //       console.error("TTS API error:", await res.text());
+  //       return;
+  //     }
+  
+  //     const audioBlob = await res.blob();
+  //     const audioUrl = URL.createObjectURL(audioBlob);
+  //     const audio = new Audio(audioUrl);
+  //     audio.play();
+  
+  //     audio.onended = () => {
+  //       console.log("Speech has finished.");
+  //     };
+  //   } catch (err) {
+  //     console.error("Error speaking text:", err);
+  //   }
+  // };
+  // const speakText = async (text) => {
+  //   try {
+  //     const res = await fetch("/api/Speak_Sarvam", {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify({
+  //         text,
+  //         target_language_code: "en-IN",
+  //         speaker: "meera",
+  //       }),
+  //     });
+  
+  //     if (!res.ok) {
+  //       const errorText = await res.text();
+  //       console.error("TTS API error:", errorText);
+  //       return;
+  //     }
+  
+  //     const data = await res.json();
+  //     const base64Audio = data.audio;
+  
+  //     if (!base64Audio) {
+  //       console.error("No audio received.");
+  //       return;
+  //     }
+  
+  //     const audioSrc = `data:audio/mpeg;base64,${base64Audio}`;
+  //     const audio = new Audio(audioSrc);
+  
+  //     audio.onerror = function (e) {
+  //       const error = e.target.error;
+  //       console.error("Audio playback error:", error);
+  //       switch (error?.code) {
+  //         case MediaError.MEDIA_ERR_ABORTED:
+  //           console.error("You aborted the audio playback.");
+  //           break;
+  //         case MediaError.MEDIA_ERR_NETWORK:
+  //           console.error("A network error caused the audio download to fail.");
+  //           break;
+  //         case MediaError.MEDIA_ERR_DECODE:
+  //           console.error("The audio playback was aborted due to a corruption or unsupported features.");
+  //           break;
+  //         case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+  //           console.error("The audio not supported.");
+  //           break;
+  //         default:
+  //           console.error("An unknown audio error occurred.");
+  //           break;
+  //       }
+  //     };
+  
+  //     audio.play().catch((err) => {
+  //       console.error("Audio play failed:", err);
+  //     });
+  
+  //     audio.onended = () => {
+  //       console.log("Speech has finished.");
+  //     };
+  //   } catch (err) {
+  //     console.error("Error speaking text:", err);
+  //   }
+  // };
+  
+  
+  
   const sendToWebSocket = (message) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       console.log('Sending message to WebSocket:', message);
@@ -164,36 +275,6 @@ export default function Home() {
     console.log('Ending conversation');
   };
 
-  const playResponseAsSpeech = async (text) => {
-    try {
-      console.log('Sending response text for TTS:', text);
-  
-      const response = await fetch('/api/Speak', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text }),
-      });
-  
-      if (!response.ok) {
-        throw new Error('Failed to generate speech');
-      }
-  
-      const audioBlob = await response.blob();
-      console.log('Audio Blob:', audioBlob); // Log the audio blob
-  
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      audio.play();
-  
-      console.log('Audio is playing...');
-    } catch (error) {
-      console.error('Error playing speech:', error);
-    }
-  };
-  
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen py-2 px-4 cursor-pointer bg-black">
       <h1 className="text-4xl font-bold text-white mb-4">Real-Time Voice AI</h1>
@@ -244,6 +325,10 @@ export default function Home() {
         >
           End Conversation
         </button>
+        {/* <button onClick={() => speakText("Hello Nithin, this is working!")}>
+  Speak
+</button> */}
+
       </div>
     </div>
   );
