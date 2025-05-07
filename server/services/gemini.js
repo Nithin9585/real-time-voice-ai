@@ -8,21 +8,26 @@ dotenv.config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Streaming response (simulated full text, since Gemini doesn't yet support token-level streaming like OpenAI)
-export async function streamGeminiResponse(history, onTokenCallback) {
+export async function streamGeminiResponse(history, onTokenCallback, userId) {
+  console.log('💬 Streaming Gemini response... for id : ', userId);
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-    // Fetch the embedding of the last user message
     const lastUserMessage = history[history.length - 1]?.content || '';
     const embedding = await getGeminiEmbedding(lastUserMessage);
 
-    // Fetch similar user messages from the vector store based on the embedding
-    const userMessagesFromVectorStore = await searchSimilarDocuments(embedding);
+    const userMessagesFromVectorStore = await searchSimilarDocuments(embedding, userId);
 
     // Format the similar messages as part of the conversation history
     const userMessagesText = userMessagesFromVectorStore
-      .map((msg) => `"${msg.content}"`) // Assuming msg contains the message text
+      .map((msg) => `"${msg.content}"`)
       .join('\n');
+
+    // Add the context from the vector store messages and current message to the model prompt
+    const fullConversationHistory = `
+      ${userMessagesText}  
+      The human just said: "${lastUserMessage}"
+    `.trim();
 
     let emotion = '';
     try {
@@ -36,20 +41,18 @@ export async function streamGeminiResponse(history, onTokenCallback) {
     }
 
     const styledPrompt = `
-You are a thoughtful, funny, flirty, and empathetic assistant in a brief conversation with a human.
-
-The user seems to be feeling: ${emotion}.
-
-Here are the latest messages from the user:
-${userMessagesText}
-
-The human just said: "${lastUserMessage}"
-
-Listen to their message and respond concisely in a natural, friendly tone, like a quick chat with someone you find interesting.
-
-Give a warm, engaging, and friendly response that subtly acknowledges their emotional state (${emotion}). Feel free to add a tiny bit of playful flirtation or a very short follow-up question.
-
-Keep your response extremely brief and ensure it contains absolutely no emojis or brackets of any kind. Aim for a very human-like reply.
+    You are Meera, a funny and understanding assistant having a casual conversation with a human.
+    
+    The user seems to be feeling: ${emotion}.
+    
+    Here are the latest messages from the user:
+    ${fullConversationHistory}
+    
+    Think about what the user said and reply in a clear, friendly, and natural way — like you're having a normal chat with someone you care about.
+    
+    Your response should feel warm and supportive, and gently show that you understand how the user feels (${emotion}). You can ask a simple follow-up question to keep the conversation going, but don't force it.
+    
+    Keep your response medium-length — not too short, not too long. Don’t use emojis or anything in brackets. Just sound real and easy to talk to.
     `.trim();
 
     const chat = model.startChat({
@@ -62,7 +65,6 @@ Keep your response extremely brief and ensure it contains absolutely no emojis o
     const result = await chat.sendMessage(styledPrompt);
     const fullText = result.response.text();
 
-    // Send the full response at once
     onTokenCallback(fullText);
     onTokenCallback('[__END__]');
   } catch (error) {
@@ -91,10 +93,10 @@ ${chatText}
 
     const result = await model.generateContent(prompt);
     const summary = result.response.text();
-    console.log('📄 Summary generated:', summary);
+    console.log(' Summary generated:', summary);
     return summary;
   } catch (err) {
-    console.error('❌ Error generating summary:', err.message);
+    console.error(' Error generating summary:', err.message);
     return '';
   }
 }
@@ -109,10 +111,10 @@ export async function getGeminiEmbedding(text) {
     });
 
     const embedding = result.embedding.values;
-    console.log('📌 Got embedding vector of length:', embedding.length);
+    console.log(' Got embedding vector of length:', embedding.length);
     return embedding;
   } catch (err) {
-    console.error('❌ Error generating embedding:', err.message);
+    console.error(' Error generating embedding:', err.message);
     return [];
   }
 }

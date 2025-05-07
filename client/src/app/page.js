@@ -2,114 +2,157 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Mic } from 'lucide-react';
-
+import { supabase } from '../../lib/supabaseClient';
+import { useRouter } from 'next/navigation';
+import { handleLogout } from '../../utils/auth';
+import Link from 'next/link';
 const SpeechRecognition = typeof window !== 'undefined'
   ? window.SpeechRecognition || window.webkitSpeechRecognition
   : null;
 
 export default function Home() {
+  
+  const [loggedInUser, setLoggedInUser] = useState(null);
   const [isListening, setIsListening] = useState(false);
   const [transcription, setTranscription] = useState('');
   const [responseText, setResponseText] = useState('');
   const [isRecognizing, setIsRecognizing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isPaused, setIsPaused] = useState(false);
+  const router = useRouter();
   const recognitionRef = useRef(null);
   const finalTranscriptRef = useRef('');
   const socketRef = useRef(null);
-
   useEffect(() => {
-    const socket = new WebSocket(process.env.NEXT_PUBLIC_API_URL);
-    socketRef.current = socket;
-
-    socket.onopen = () => {
-      console.log('✅ WebSocket connection established');
+    const getUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) {
+        console.log('Logged in user:', data.user);
+        setLoggedInUser(data.user);
+      }else{
+        router.push("/Login"); 
+      }
     };
-
-    socket.onmessage = async (event) => {
-      console.log('WebSocket message received:', event.data);
-      const data = JSON.parse(event.data);
-
-      if (data.partial) {
-        if (data.partial === '[__END__]') {
-          console.log('✅ Gemini finished responding.');
-        } else {
-          setResponseText((prev) => prev + data.partial);
-
-          // Directly send each chunk to the browser's TTS
+    getUser();
+  }, []);
+  useEffect(() => {
+    const createWebSocket = () => {
+      const socket = new WebSocket(process.env.NEXT_PUBLIC_API_URL);
+      socketRef.current = socket;
+  
+      socket.onopen = () => {
+        console.log('✅ WebSocket connection established');
+        if (loggedInUser) {
+          socket.send(
+            JSON.stringify({
+              type: 'init',
+              user: {
+                id: loggedInUser.id,
+                email: loggedInUser.email,
+              },
+            })
+          );
+          console.log('👤 Sent user ID to WebSocket:', loggedInUser.id);
+        }
+      };
+  
+      socket.onmessage = async (event) => {
+        console.log('WebSocket message received:', event.data);
+        const data = JSON.parse(event.data);
+  
+        if (data.partial) {
+          if (data.partial === '[__END__]') {
+            console.log('✅ Gemini finished responding.');
+          } else {
+            setResponseText((prev) => prev + data.partial);
+  
+            // Directly send each chunk to the browser's TTS
+            try {
+              console.log('Requesting TTS with chunk:', data.partial);
+              speakText(data.partial);
+            } catch (err) {
+              console.error('Error in TTS:', err);
+            }
+          }
+        }
+  
+        if (data.reply) {
+          setResponseText(data.reply);
           try {
-            console.log('Requesting TTS with chunk:', data.partial);
-            speakText(data.partial);
+            console.log('Requesting TTS with full reply:', data.reply);
+            speakText(data.reply);
           } catch (err) {
             console.error('Error in TTS:', err);
           }
+  
+          console.log('Response from Gemini:', data.reply);
         }
-      }
-
-      if (data.reply) {
-        setResponseText(data.reply);
-        // Send the complete reply to TTS
-        try {
-          console.log('Requesting TTS with full reply:', data.reply);
-          speakText(data.reply);
-        } catch (err) {
-          console.error('Error in TTS:', err);
+  
+        if (data.error) {
+          setErrorMessage(data.error);
+          console.error('WebSocket error message:', data.error);
         }
-
-        console.log('Response from Gemini:', data.reply);
-      }
-
-      if (data.error) {
-        setErrorMessage(data.error);
-        console.error('WebSocket error message:', data.error);
-      }
+      };
+  
+      socket.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        setErrorMessage('WebSocket error occurred');
+      };
+  
+      socket.onclose = () => {
+        console.log('🔌 WebSocket disconnected');
+  
+        // Attempt to reconnect after 3 seconds
+        setTimeout(() => {
+          console.log('🔄 Reconnecting to WebSocket...');
+          createWebSocket();
+        }, 3000);
+      };
     };
-
-    socket.onerror = (err) => {
-      console.error('WebSocket error:', err);
-      setErrorMessage('WebSocket error occurred');
-    };
-
-    socket.onclose = () => {
-      console.log('🔌 WebSocket disconnected');
-      setErrorMessage('WebSocket connection lost.');
-    };
-
+  
+    // Establish WebSocket connection when component mounts or loggedInUser changes
+    if (loggedInUser) {
+      createWebSocket();
+    }
+  
+    // Cleanup WebSocket connection on unmount
     return () => {
-      socket.close();
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
     };
-  }, []);
-
-  // const speakText = async (text) => {
-  //   try {
-  //     const res = await fetch("/api/Speak", {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify({
-  //         text,
-  //         voice_id: "EXAVITQu4vr4xnSDxMaL" 
-  //       }),
-  //     });
+  }, [loggedInUser]);
   
-  //     if (!res.ok) {
-  //       console.error("TTS API error:", await res.text());
-  //       return;
-  //     }
+  const speakText = async (text) => {
+    try {
+      const res = await fetch("/api/Speak", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          voice_id: "EXAVITQu4vr4xnSDxMaL" 
+        }),
+      });
   
-  //     const audioBlob = await res.blob();
-  //     const audioUrl = URL.createObjectURL(audioBlob);
-  //     const audio = new Audio(audioUrl);
-  //     audio.play();
+      if (!res.ok) {
+        console.error("TTS API error:", await res.text());
+        return;
+      }
   
-  //     audio.onended = () => {
-  //       console.log("Speech has finished.");
-  //     };
-  //   } catch (err) {
-  //     console.error("Error speaking text:", err);
-  //   }
-  // };
+      const audioBlob = await res.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.play();
+  
+      audio.onended = () => {
+        console.log("Speech has finished.");
+      };
+    } catch (err) {
+      console.error("Error speaking text:", err);
+    }
+  };
   // const speakText = async (text) => {
   //   try {
   //     const res = await fetch("/api/Speak_Sarvam", {
@@ -278,8 +321,21 @@ export default function Home() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen py-2 px-4 cursor-pointer bg-black">
       <h1 className="text-4xl font-bold text-white mb-4">Real-Time Voice AI</h1>
-
+      <h1 className="text-4xl font-bold text-white mb-4">{loggedInUser?.email}</h1>
       {errorMessage && <div className="text-red-500 mb-4">{errorMessage}</div>}
+      {loggedInUser && (
+        <Link href={'/Login'}>
+  <button
+    onClick={handleLogout}
+    className="m-4 px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow hover:bg-red-600 transition duration-200 cursor-pointer"
+  >
+    Logout
+  </button>
+  </Link>
+)}
+
+
+
 
       <div
         className="w-full max-w-md h-60 border-2 border-gray-600 rounded-lg hover:bg-gray-800 transition duration-300 ease-in-out"
@@ -325,9 +381,9 @@ export default function Home() {
         >
           End Conversation
         </button>
-        {/* <button onClick={() => speakText("Hello Nithin, this is working!")}>
+        <button onClick={() => speakText("Hello Nithin, this is working!")}>
   Speak
-</button> */}
+</button>
 
       </div>
     </div>

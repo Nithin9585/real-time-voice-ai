@@ -8,8 +8,9 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-export async function addDocument(content, embedding) {
+export async function addDocument(content, embedding, userId) {
   const { error } = await supabase.from('documents').insert({
+    user_id: userId,
     content,
     embedding
   });
@@ -20,15 +21,15 @@ export async function addDocument(content, embedding) {
     console.log('✅ Document added to Supabase');
   }
 }
-// vectorStore.js
-export async function searchSimilarDocuments(embedding, matchThreshold = 0.75, matchCount = 3) {
+export async function searchSimilarDocuments(embedding, userId, matchThreshold = 0.75, matchCount = 3) {
   try {
-    console.log('🔍 Searching with embedding:', embedding);
+    console.log(`🔍 Searching for user ${userId} with embedding`);
 
-    const { data, error } = await supabase.rpc('match_documents', {
-      query_embedding: embedding,  // Ensure embedding is a numeric array
+    const { data, error } = await supabase.rpc('documents', {
+      query_embedding: embedding,
       match_threshold: matchThreshold,
-      match_count: matchCount
+      match_count: matchCount,
+      user_id: userId
     });
 
     if (error) {
@@ -36,9 +37,18 @@ export async function searchSimilarDocuments(embedding, matchThreshold = 0.75, m
       return [];
     }
 
-    console.log('🔍 Vector search results:', data);
+    console.log('🔍 Raw vector search results:', data);
 
-    return data;
+    if (!data || data.length === 0) {
+      console.warn('⚠️ No matching documents found.');
+      return [];
+    }
+
+    const userFilteredResults = data;
+    console.log('🔍 Filtered vector search results:', userFilteredResults);
+
+    return userFilteredResults;
+
   } catch (err) {
     console.error('❌ Unexpected error in vector search:', err.message);
     return [];
