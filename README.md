@@ -61,7 +61,7 @@ real-time-voice-ai/
 │   ├── routes/
 │   ├── services/
 │   ├── utils/
-│   ├── rag/              # Likely related to retrieval-augmented generation
+│   ├── rag/              #  related to retrieval-augmented generation
 │   ├── websocket.js
 │   ├── server.js
 │   ├── package.json
@@ -73,14 +73,14 @@ real-time-voice-ai/
 │   ├── requirements.txt
 │   └── venv/             # Python virtual environment
 │
-├── redis/                # Possibly for Redis config or data
-│   └── (contents unknown — you can clarify)
+├── redis/                #  Redis config or data
+│   └── 
 │
 ├── scripts/              # Automation scripts
 │   ├── start.sh
 │   └── stop.sh
 │
-├── rag.txt               # Possibly reference data for RAG
+├── rag.txt               #  reference data for RAG
 ├── README.md             # Project documentation
 ```
 
