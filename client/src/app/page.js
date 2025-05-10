@@ -122,101 +122,209 @@ export default function Home() {
       }
     };
   }, [loggedInUser]);
-  
-  const speakText = async (text) => {
-    try {
+
+let currentAudio = null; // Track the current audio
+let isSpeakingAborted = false; // Track if speech was interrupted
+
+const fillerWords = ["hmm", "okay", "continue", "right", "go on", "ha ha go on", "oo oo you are very fast "];
+
+// Function to stop speaking immediately
+const stopSpeaking = () => {
+  isSpeakingAborted = true;
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.src = ''; // Clear the audio source to stop it immediately
+    currentAudio = null; // Reset the current audio
+  }
+};
+
+// Function to play a single audio file
+const playAudio = (audioSrc) => {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(audioSrc);
+    currentAudio = audio;
+
+    // Add this check right at the beginning of the playAudio function.
+    if (isSpeakingAborted) {
+      reject(new Error("Speech aborted before playing.")); // Reject if aborted
+      return;
+    }
+
+    audio.onended = () => {
+      currentAudio = null; // Reset after the audio ends
+      resolve();
+    };
+    audio.onerror = (e) => {
+      currentAudio = null; // Reset on error
+      reject(e);
+    };
+
+    audio.play().then(() => {
+         // Audio started playing
+    }).catch(error => {
+        // Check again if it was aborted during the async operation
+        if (isSpeakingAborted) {
+            reject(new Error("Speech aborted during playback."));
+        }
+        else{
+          reject(error); // reject with the original error
+        }
+
+    });
+  });
+};
+
+// Function to speak text
+const speakText = async (text) => {
+  try {
+    stopSpeaking(); // 🛑 Immediately stop any existing speech
+    isSpeakingAborted = false; // Reset for new speech
+
+    const chunks = text.split('.').map(chunk => chunk.trim()).filter(chunk => chunk); // Remove empty chunks
+    let allAudio = [];
+
+    // Add filler words at random intervals
+    chunks.forEach((chunk, index) => {
+      if (index !== 0 && Math.random() > 0.5) {
+        const filler = fillerWords[Math.floor(Math.random() * fillerWords.length)];
+        allAudio.push(filler);
+      }
+      allAudio.push(chunk);
+    });
+
+    // Now play the speech with the fillers
+    for (let sentence of allAudio) {
+      if (isSpeakingAborted) {
+        console.log('🎤 Speaking was aborted. Exiting...');
+        return; // 🛑 Exit if interrupted
+      }
+
       const res = await fetch("/api/Speak", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text,
-          voice_id: "EXAVITQu4vr4xnSDxMaL" 
+          text: sentence,
+          voice_id: "EXAVITQu4vr4xnSDxMaL",
         }),
       });
-  
+
       if (!res.ok) {
         console.error("TTS API error:", await res.text());
         return;
       }
-  
+
       const audioBlob = await res.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      audio.play();
-  
-      audio.onended = () => {
-        console.log("Speech has finished.");
-      };
-    } catch (err) {
-      console.error("Error speaking text:", err);
+
+      try {
+        await playAudio(audioUrl); // 🔊 Play audio
+      } catch (error) {
+          if (isSpeakingAborted){
+               console.log("Play audio rejected because of abort", error)
+               URL.revokeObjectURL(audioUrl); // Cleanup
+               return;
+          }
+          else{
+            console.error("Error playing audio:", error);
+          }
+
+      }
+      URL.revokeObjectURL(audioUrl); // Cleanup
     }
-  };
-  // const speakText = async (text) => {
-  //   try {
-  //     const res = await fetch("/api/Speak_Sarvam", {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify({
-  //         text,
-  //         target_language_code: "en-IN",
-  //         speaker: "meera",
-  //       }),
-  //     });
-  
-  //     if (!res.ok) {
-  //       const errorText = await res.text();
-  //       console.error("TTS API error:", errorText);
-  //       return;
-  //     }
-  
-  //     const data = await res.json();
-  //     const base64Audio = data.audio;
-  
-  //     if (!base64Audio) {
-  //       console.error("No audio received.");
-  //       return;
-  //     }
-  
-  //     const audioSrc = `data:audio/mpeg;base64,${base64Audio}`;
-  //     const audio = new Audio(audioSrc);
-  
-  //     audio.onerror = function (e) {
-  //       const error = e.target.error;
-  //       console.error("Audio playback error:", error);
-  //       switch (error?.code) {
-  //         case MediaError.MEDIA_ERR_ABORTED:
-  //           console.error("You aborted the audio playback.");
-  //           break;
-  //         case MediaError.MEDIA_ERR_NETWORK:
-  //           console.error("A network error caused the audio download to fail.");
-  //           break;
-  //         case MediaError.MEDIA_ERR_DECODE:
-  //           console.error("The audio playback was aborted due to a corruption or unsupported features.");
-  //           break;
-  //         case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-  //           console.error("The audio not supported.");
-  //           break;
-  //         default:
-  //           console.error("An unknown audio error occurred.");
-  //           break;
-  //       }
-  //     };
-  
-  //     audio.play().catch((err) => {
-  //       console.error("Audio play failed:", err);
-  //     });
-  
-  //     audio.onended = () => {
-  //       console.log("Speech has finished.");
-  //     };
-  //   } catch (err) {
-  //     console.error("Error speaking text:", err);
-  //   }
-  // };
+
+    console.log("Speech has finished.");
+  } catch (err) {
+    console.error("Error speaking text:", err);
+  }
+};
+
+// let currentAudio = null; // Track the current audio
+// const fillerWords = ["hmm", "okay", "continue", "right", "go on"]; // Define fillers
+
+// // Randomly pick a filler word
+// const getRandomFiller = () => fillerWords[Math.floor(Math.random() * fillerWords.length)];
+
+// const speakText = async (text) => {
+//   try {
+//     // 🛑 Stop any ongoing audio before starting a new one
+//     if (currentAudio) {
+//       currentAudio.pause();
+//       currentAudio.src = ''; // Clear the audio source to release resources
+//       currentAudio = null;
+//     }
+
+//     // 💬 Split the text into chunks (and add filler words)
+//     const chunks = text.split(/(?<=[.?!])\s+/).filter(Boolean); // Split at punctuation followed by space
+//     const fullSequence = [];
+
+//     chunks.forEach((chunk, idx) => {
+//       fullSequence.push(chunk); // Add the chunk
+//       if (idx !== chunks.length - 1) fullSequence.push(getRandomFiller()); // Add filler between chunks
+//     });
+
+//     // 🔁 Play all chunks one by one
+//     for (const part of fullSequence) {
+//       const res = await fetch("/api/Speak_Sarvam", {
+//         method: "POST",
+//         headers: {
+//           "Content-Type": "application/json",
+//         },
+//         body: JSON.stringify({
+//           text: part,
+//           target_language_code: "en-IN",
+//           speaker: "meera", // Specify speaker
+//         }),
+//       });
+
+//       if (!res.ok) {
+//         const errorText = await res.text();
+//         console.error("TTS API error:", errorText);
+//         continue;
+//       }
+
+//       const data = await res.json();
+//       const base64Audio = data.audio;
+
+//       if (!base64Audio) {
+//         console.error("No audio received.");
+//         continue;
+//       }
+
+//       // Create new audio object and set it to the current one
+//       const audioSrc = `data:audio/mpeg;base64,${base64Audio}`;
+//       const audio = new Audio(audioSrc);
+
+//       // Store the new audio as the current one
+//       currentAudio = audio;
+
+//       // Handle audio play and completion
+//       const playPromise = new Promise((resolve) => {
+//         audio.onended = () => {
+//           currentAudio = null; // Reset current audio when it ends
+//           resolve();
+//         };
+//         audio.onerror = (e) => {
+//           console.error("Audio playback error:", e?.target?.error || e);
+//           resolve();
+//         };
+//       });
+
+//       // Attempt to play the audio and wait for it to finish
+//       await audio.play().catch((err) => {
+//         console.error("Audio play failed:", err);
+//       });
+
+//       await playPromise; // Wait until the current audio finishes
+//     }
+
+//     console.log("All speech chunks finished.");
+//   } catch (err) {
+//     console.error("Error speaking text:", err);
+//   }
+// };
+
   
   
   
@@ -251,14 +359,17 @@ export default function Home() {
         console.log('Speech recognition started');
       };
 
-      recognition.onend = () => {
-        if (!isPaused) {
-          sendToWebSocket(finalTranscriptRef.current.trim());
-        }
-        setIsRecognizing(false);
-        setIsListening(false);
-        console.log('Speech recognition ended');
-      };
+    recognition.onend = () => {
+  if (!isPaused) {
+    console.log('Recognition ended unexpectedly. Restarting...');
+    recognition.start(); // Automatically restart if not paused
+  } else {
+    console.log('Speech recognition manually paused.');
+  }
+  setIsRecognizing(false);
+  setIsListening(false);
+};
+
 
       recognition.onresult = (event) => {
         let interim = '';
@@ -321,18 +432,23 @@ export default function Home() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen py-2 px-4 cursor-pointer bg-black">
       <h1 className="text-4xl font-bold text-white mb-4">Real-Time Voice AI</h1>
-      <h1 className="text-4xl font-bold text-white mb-4">{loggedInUser?.email}</h1>
       {errorMessage && <div className="text-red-500 mb-4">{errorMessage}</div>}
-      {loggedInUser && (
-        <Link href={'/Login'}>
-  <button
-    onClick={handleLogout}
-    className="m-4 px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow hover:bg-red-600 transition duration-200 cursor-pointer"
-  >
-    Logout
-  </button>
-  </Link>
-)}
+     <div className="flex flex-row items-center justify-between max-w-md">
+  {loggedInUser && (
+    <>
+            <h1 className="text-4xl font-bold text-white mb-4">{loggedInUser?.email}</h1>
+
+      <button
+        onClick={handleLogout}
+        className="m-4 px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow hover:bg-red-600 transition duration-200 cursor-pointer"
+      >
+        Logout
+      </button>
+    </>
+  )}
+</div>
+
+
 
 
 
@@ -357,12 +473,12 @@ export default function Home() {
         </h2>
       </div>
 
-      <div className="text-white mt-10 text-center max-w-xl">
+      <div className="text-white mt-12 text-center max-w-xl border-2 p-4 rounded-md">
         <h3 className="text-lg font-semibold">You Said:</h3>
         <p className="text-base italic">{transcription || '...'}</p>
       </div>
 
-      <div className="text-green-400 mt-6 text-center max-w-xl">
+      <div className="text-green-400 mt-6 text-center max-w-xl border-2 p-4 rounded-md">
         <h3 className="text-lg font-semibold">Gemini Response:</h3>
         <p className="text-base whitespace-pre-wrap">{responseText || '...'}</p>
       </div>

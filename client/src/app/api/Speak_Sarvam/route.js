@@ -14,7 +14,17 @@ export const POST = async (request) => {
     }
 
     
-    const speaker =  "Anushka";
+    const speaker = requestedSpeaker || "anushka"; // Ensure it's lowercase if needed
+
+if (!["meera", "pavithra", "maitreyi", "arvind", "amol", "amartya", "diya", "neel", "misha", "vian", "arjun", "maya", "anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"].includes(speaker.toLowerCase())) {
+  return new Response(
+    JSON.stringify({ error: "Invalid speaker name." }),
+    {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+}
 
     if (!process.env.SARVAM_API_KEY) {
       return new Response(JSON.stringify({ error: "API key is missing" }), {
@@ -33,7 +43,7 @@ export const POST = async (request) => {
         inputs: [text],
         target_language_code,
         speaker,
-        model: "bulbul:v2",
+        model: "bulbul:v1",
         speech_sample_rate: 8000,
         enable_preprocessing: true,
       }),
